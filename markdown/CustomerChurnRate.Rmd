@@ -1,0 +1,916 @@
+---
+title: "CustomerChurnRate.Rmd"
+author: "Michelle Guya"
+date: "28 November"
+output:
+  github_document: 
+    toc: yes
+    toc_depth: 4
+    fig_width: 6
+    fig_height: 4
+    df_print: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(formatR)
+knitr::opts_chunk$set(
+  warning = FALSE,
+  collapse = FALSE
+)
+```
+
+The dataset that was used can be downloaded here:
+# Source: https://www.kaggle.com/datasets/muhammadshahidazeem/customer-churn-dataset/
+
+```{r Dataset Loader}
+library(readr)
+dataset<- read_csv("customer_churn_dataset-testing.csv",
+                   col_types = cols(
+                     `Churn` = col_factor(level = c("0", "1"))
+                   )
+                  )
+```
+
+```{r Install & Load Packages}
+##  ---
+# Install renv ---
+if (!is.element("renv", installed.packages()[, 1])) {
+  install.packages("renv", dependencies = TRUE)
+}
+require("renv")
+
+## naivebayes ----
+if (require("naivebayes")) {
+  require("naivebayes")
+} else {
+  install.packages("naivebayes", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## caret ---
+if (require("caret")) {
+  require("caret")
+} else {
+  install.packages("caret", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## e1071 ----
+if (require("e1071")) {
+  require("e1071")
+} else {
+  install.packages("e1071", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## LiblineaR ----
+if (require("LiblineaR")) {
+  require("LiblineaR")
+} else {
+  install.packages("LiblineaR", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## RandomForest ---
+if (require("randomForest")) {
+  require("randomForest")
+} else {
+  install.packages("randomForest", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## RRF ----
+if (require("RRF")) {
+  require("RRF")
+} else {
+  install.packages("RRF", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## plumber ----
+if (require("plumber")) {
+  require("plumber")
+} else {
+  install.packages("plumber", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## httr ----
+if (require("httr")) {
+  require("httr")
+} else {
+  install.packages("httr", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## jsonlite ----
+if (require("jsonlite")) {
+  require("jsonlite")
+} else {
+  install.packages("jsonlite", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+
+## e1071 ---
+if (!is.element("e1071", installed.packages()[, 1])) {
+  install.packages("e1071", dependencies = TRUE)
+}
+require("e1071")
+
+## Amelia ---
+if (!is.element("Amelia", installed.packages()[, 1])) {
+  install.packages("Amelia", dependencies = TRUE)
+}
+require("Amelia")
+
+## naniar ---
+if (!is.element("naniar", installed.packages()[, 1])) {
+  install.packages("naniar", dependencies = TRUE,
+                   repos = "https://cloud.r-project.org")
+}
+require("naniar")
+
+```
+
+```{r Exploratory Data Analyis}
+# Preview the Loaded Datasets ----
+# 1. display the dimensions of your dataset:
+dim(dataset)
+
+# 2. Identify the Data Types
+sapply(dataset, class)
+
+# 3. Descriptive Statistics
+## 1. Measures of Frequency
+# A. Identifying the number of instances that belong to each class. ----
+dataset_gender_freq <- dataset$Gender
+cbind(frequency = table(dataset_gender_freq),
+      percentage = prop.table(table(dataset_gender_freq)) * 100)
+
+dataset_contract_freq <- dataset$`Contract Length`
+cbind(frequency = table(dataset_contract_freq),
+      percentage = prop.table(table(dataset_contract_freq)) * 100)
+
+dataset_subscription_freq <- dataset$`Subscription Type`
+cbind(frequency = table(dataset_subscription_freq),
+      percentage = prop.table(table(dataset_subscription_freq)) * 100)
+
+dataset_churn_freq <- dataset$`Churn`
+cbind(frequency = table(dataset_churn_freq),
+      percentage = prop.table(table(dataset_churn_freq)) * 100)
+# ------------------------------------------------------------------------------
+
+## 2. Measures of Central Tendency
+# A. Calculate the mode
+dataset_gender_mode <- names(table(dataset$Gender))[
+  which(table(dataset$Gender) == max(table(dataset$Gender)))
+]
+print(dataset_gender_mode)
+
+dataset_contract_mode <- names(table(dataset$`Contract Length`))[
+  which(table(dataset$`Contract Length`) == max(table(dataset$`Contract Length`)))
+]
+print(dataset_contract_mode)
+
+dataset_subscription_mode <- names(table(dataset$`Subscription Type`))[
+  which(table(dataset$`Subscription Type`) == max(table(dataset$`Subscription Type`)))
+]
+print(dataset_contract_mode)
+
+dataset_churn_mode <- names(table(dataset$`Churn`))[
+  which(table(dataset$`Churn`) == max(table(dataset$`Churn`)))
+]
+print(dataset_churn_mode)
+# ---------------------------------------------------------------------------------------
+
+## 3. Measures of Distribution/Dispersion/Spread/Scatter/Variability
+# A. Measure the distribution of the data for each variable ---
+summary(dataset)
+
+# B. Measure the standard deviation of each variable ----
+sapply(dataset[, c(2,4,5,6,7,10,11)], sd)
+
+# C. Measure the variance of each variable ----
+sapply(dataset[, c(2,4,5,6,7,10,11)], var)
+
+# D. Measure the kurtosis of each variable ----
+sapply(dataset[, c(2,4,5,6,7,10,11)], kurtosis, type = 2)
+
+# E. Measure the skewness of each variable ----
+sapply(dataset[, c(2,4,5,6,7,10,11)], skewness, type = 2)
+# ---------------------------------------------------------------------------------------
+
+## 4. Measures of Relationship
+# A. Measure the covariance between variables ----
+dataset_cov <- cov(dataset[, c(2,4,5,6,7,10,11)])
+View(dataset_cov)
+
+# B. Measure the correlation between variables ----
+dataset_cor <- cor(dataset[, c(2,4,5,6,7,10,11)])
+View(dataset_cor)
+# ------------------------------------------------------------------------------
+```
+
+```{r Inferential Statistics}
+# ANOVA
+# Dependent variable: Total Spend, Usage Frequency
+# Independent variable: Subscription Type, Gender, Contract Length
+
+# A. One-Way ANOVA:
+# -> Testing the effect of Subscription Type on Total Spend
+# Null Hypothesis (H0): There is no significant difference in the mean total spend across different subscription types.
+# Alternative Hypothesis (H1): There is a significant difference in the mean total spend across different subscription types.
+dataset_one_way_anova_first <- aov(`Total Spend` ~ `Subscription Type`, data = dataset)
+summary(dataset_one_way_anova_first)
+
+# -> Testing the effect of Gender on Usage Frequency
+# Null Hypothesis (H0): There is no significant difference in the mean usage frequency between different genders.
+# Alternative Hypothesis (H1): There is a significant difference in the mean usage frequency between different genders.
+dataset_one_way_anova_second <- aov(`Usage Frequency` ~ `Gender`, data = dataset)
+summary(dataset_one_way_anova_second)
+
+# The two null hypothesis are false
+
+# B. Two-Way ANOVA
+# -> Testing the interaction effect of Subscription Type and Contract Length on Total Spend
+# Null Hypothesis (H0): There is no significant main effect of Subscription Type, 
+# no significant main effect of Contract Length, and no significant interaction effect between
+# Subscription Type and Contract Length on Total Spend.
+# Alternative Hypothesis (H1): At least one of the main effects or the interaction effect is significant.
+dataset_two_way_anova <- aov(`Total Spend` ~ `Subscription Type` * `Contract Length`, data = dataset)
+summary(dataset_two_way_anova)
+
+# The null hypothesis is true.
+# --------------------------------------------------------------------------------------------------------
+
+# STEP 4: Qualitative Data Analysis ----
+# Basic Visualization for Understanding the Dataset 
+## Univariate Plots ---
+# A. Create Histograms for Each Numeric Attribute 
+
+# Obtain all numeric variables
+numeric_variables <- dataset[, sapply(dataset, is.numeric)]
+
+par(mfrow = c(2, 4))  # Adjust the layout based on the number of numeric variables
+
+for (col in names(numeric_variables)) {
+  hist(dataset[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+# B. Create Box and Whisker Plots for Each Numeric Attribute ----
+for (col in names(numeric_variables)) {
+  boxplot(dataset[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+# C. Create Bar Plots for Each Categorical Attribute ----
+categorical_variables <- dataset[, sapply(dataset, is.factor)]
+
+par(mfrow = c(1, 2), oma = c(4, 4, 4, 4))
+
+for (col in names(categorical_variables)) {
+  table_data <- table(dataset[[col]])
+  barplot(table_data, main = col, col = "skyblue", border = "black")
+}
+
+# D. A map to identify the missing data the dataset:
+missmap(dataset, col = c("red", "grey"), legend = TRUE)
+
+## Multivariate Plots ----
+# A. Create a Correlation Plot ----
+if (!is.element("corrplot", installed.packages()[, 1])) {
+  install.packages("corrplot", dependencies = TRUE)
+}
+require("corrplot")
+corrplot(cor(dataset[, c(2,4,5,6,7,10,11)]), method = "circle")
+
+# B. Create a Scatter Plot ----
+pairs(numeric_variables)
+
+# C. Create Multivariate Box and Whisker Plots by Class ----
+if (!is.element("caret", installed.packages()[, 1])) {
+  install.packages("caret", dependencies = TRUE)
+}
+require("caret")
+featurePlot(x = dataset[, c(2,4,5,6,7,10,11)], y = dataset[, 12],
+            plot = "box")
+# ----------------------------------------------------------------------
+```
+
+```{r Data Transforms}
+
+# STEP 5: Data Tranformation ----
+# A. Subset of rows
+rand_ind <- sample(seq_len(nrow(dataset)), 1000)
+subset_dataset <- dataset[rand_ind, ]
+
+
+# B. Confirm the "missingness" in the Dataset before Imputation ----
+missmap(dataset, col = c("red", "grey"), legend = TRUE)
+# No missing data
+# ----------------------------------------------------------------------
+
+```
+
+
+```{r Exposing the Structure of Data using Data Transforms }
+# A. Scale Data Transform ----
+
+# BEFORE
+summary(subset_dataset)
+#for (col in names(numeric_variables)) {
+#  hist(subset_dataset[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+#}
+
+# Set up multiple pages with 3 columns and 4 rows
+par(mfcol = c(3, 4))
+
+# Loop over your plots
+for (i in 1:8) {
+  # Your plotting code here
+  
+  # If you want to start a new page every 12 plots
+  if (i %% 12 == 0) {
+    dev.new()
+    par(mfcol = c(3, 4))
+  }
+} 
+
+model_of_the_transform <- preProcess(subset_dataset, method = c("scale"))
+print(model_of_the_transform)
+subset_scale_transform <- predict(model_of_the_transform,
+                                          subset_dataset)
+# After
+summary(subset_scale_transform)
+
+for (col in names(numeric_variables)) {
+  hist(subset_scale_transform[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+# B. Center Data Transform ----
+# BEFORE
+summary(subset_dataset)
+# Set up multiple pages with 3 columns and 4 rows
+par(mfcol = c(3, 4))
+
+# Loop over your plots
+for (i in 1:8) {
+  # Your plotting code here
+  
+  # If you want to start a new page every 12 plots
+  if (i %% 12 == 0) {
+    dev.new()
+    par(mfcol = c(3, 4))
+  }
+}
+for (col in names(numeric_variables)) {
+  hist(subset_dataset[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+ 
+model_of_the_transform <- preProcess(subset_dataset, method = c("center"))
+print(model_of_the_transform)
+subset_center_transform <- predict(model_of_the_transform, # nolint
+                                           subset_dataset)
+
+# AFTER
+summary(subset_center_transform)
+# Set up multiple pages with 3 columns and 4 rows
+par(mfcol = c(3, 4))
+
+# Loop over your plots
+for (i in 1:8) {
+  # Your plotting code here
+  
+  # If you want to start a new page every 12 plots
+  if (i %% 12 == 0) {
+    dev.new()
+    par(mfcol = c(3, 4))
+  }
+}
+for (col in names(numeric_variables)) {
+  hist(subset_center_transform[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+# C. Standardize Data Transform ----
+# BEFORE
+summary(subset_dataset)
+sapply(subset_dataset[, c(2,4,5,6,7,10,11)], sd)
+
+model_of_the_transform <- preProcess(subset_dataset,
+                                     method = c("scale", "center"))
+print(model_of_the_transform)
+subset_standardize_transform <- predict(model_of_the_transform, # nolint
+                                                subset_dataset)
+
+# AFTER
+summary(subset_standardize_transform)
+sapply(subset_standardize_transform[, c(2,4,5,6,7,10,11)], sd)
+
+
+# D. Normalize Data Transform ----
+summary(subset_dataset)
+model_of_the_transform <- preProcess(subset_dataset, method = c("range"))
+print(model_of_the_transform)
+subset_normalize_transform <- predict(model_of_the_transform, # nolint
+                                              subset_dataset)
+summary(subset_normalize_transform)
+
+# E. Box-Cox Power Transform ----
+# BEFORE
+summary(subset_dataset)
+
+sapply(subset_dataset[, c(2,4,5,6,7,10,11)], skewness, type = 2)
+
+for (col in names(numeric_variables)) {
+  boxplot(subset_dataset[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+
+model_of_the_transform <- preProcess(subset_dataset, method = c("BoxCox"))
+print(model_of_the_transform)
+subset_box_cox_transform <- predict(model_of_the_transform, # nolint
+                                            subset_dataset)
+# AFTER
+summary(subset_box_cox_transform)
+
+sapply(subset_box_cox_transform[, c(2,4,5,6,7,10,11)], skewness, type = 2)
+
+for (col in names(numeric_variables)) {
+  hist(subset_box_cox_transform[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+# F. Yeo-Johnson Power Transform ----
+# BEFORE
+summary(subset_dataset)
+
+sapply(subset_dataset[, c(2,4,5,6,7,10,11)], skewness, type = 2)
+
+for (col in names(numeric_variables)) {
+  hist(subset_dataset[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+model_of_the_transform <- preProcess(subset_dataset, method = c("YeoJohnson"))
+print(model_of_the_transform)
+subset_yeo_johnson_transform <- predict(model_of_the_transform, # nolint
+                                                subset_dataset)
+
+# AFTER
+summary(subset_yeo_johnson_transform)
+
+sapply(subset_yeo_johnson_transform[, c(2,4,5,6,7,10,11)], skewness, type = 2)
+
+for (col in names(numeric_variables)) {
+  boxplot(subset_yeo_johnson_transform[[col]], main = col, xlab = col, col = "skyblue", border = "black")
+}
+
+# G.a. Principal Component Analysis for Dimensionality Reduction  -----
+summary(subset_dataset)
+
+model_of_the_transform <- preProcess(subset_dataset, method =
+                                       c("scale", "center", "pca"))
+
+print(model_of_the_transform)
+subset_pca_dr <- predict(model_of_the_transform, subset_dataset)
+
+summary(subset_pca_dr)
+
+# G.b. PCA Linear Algebra Transform for Feature Extraction ----
+subset_pca_fe <- princomp(cor(subset_dataset[, c(2,4,5,6,7,10,11)]))
+summary(subset_pca_fe)
+
+#### Scree Plot ----
+# The Scree Plot shows that the 1st 2 principal components can cumulatively
+# explain 92.8% of the variance, i.e., 87.7% + 5.1% = 92.8%.
+factoextra::fviz_eig(subset_pca_fe, addlabels = TRUE)
+
+# Loading Values
+subset_pca_fe$loadings[, 1:2]
+
+factoextra::fviz_cos2(subset_pca_fe, choice = "var", axes = 1:2)
+
+# Biplot and Cos2 Combined Plot ----
+factoextra::fviz_pca_var(subset_pca_fe, col.var = "cos2",
+                         gradient.cols = c("red", "orange", "green"),
+                         repel = TRUE)
+
+# H. ICA Linear Algebra Transform for Dimensionality Reduction ----
+if (!is.element("fastICA", installed.packages()[, 1])) {
+  install.packages("fastICA", dependencies = TRUE)
+}
+require("fastICA")
+
+summary(subset_dataset)
+
+model_of_the_transform <- preProcess(subset_dataset,
+                                     method = c("scale", "center", "ica"),
+                                     n.comp = 8)
+print(model_of_the_transform)
+subset_ica_dr <- predict(model_of_the_transform, subset_dataset)
+
+summary(subset_ica_dr)
+# ------------------------------------------------------------------------------
+```
+
+```{}
+# STEP 8: Training the Model
+## 1. Data Splitting
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+train_index <- createDataPartition(subset_dataset$Churn,
+                                   p = 0.75,
+                                   list = FALSE)
+
+subset_dataset_train <- subset_dataset[train_index, -1 ]
+subset_dataset_test <- subset_dataset[-train_index, -1]
+
+```
+### 2. Model Training
+## Naive Bayes ---
+### Train a Naive Bayes classifier based on an LOOCV ----
+train_control <- trainControl(method = "LOOCV")
+
+churn_model_nb_loocv <-
+  caret::train(`Churn` ~ ., data = subset_dataset_train,
+               trControl = train_control, na.action = na.omit,
+               method = "naive_bayes", metric = "Accuracy")
+
+### Test the trained model using the testing dataset ====
+predictions_nb_loocv <-
+  predict(churn_model_nb_loocv, churn_dataset_test[, 1:14])
+
+### View the Model
+print(churn_model_nb_loocv)
+
+
+## LDA ----
+set.seed(7)
+churn_model_lda <- train(Churn ~ ., data = subset_dataset_train,
+                        method = "lda", trControl = train_control)
+
+## KNN ----
+set.seed(7)
+churn_model_knn <- train(Churn ~ ., data = subset_dataset_train,
+                        method = "knn", trControl = train_control)
+
+## SVM ----
+set.seed(7)
+churn_model_svm <- train(Churn ~ ., data = subset_dataset_train,
+                        method = "svmRadial", trControl = train_control)
+
+## Random Forest ----
+set.seed(7)
+churn_model_rf <- train(Churn ~ ., data = subset_dataset_train,
+                       method = "rf", trControl = train_control)
+
+### 3.a. Call the `resamples` Function ----
+results <- resamples(list(LDA = churn_model_lda,KNN = churn_model_knn,
+                          SVM = churn_model_svm,RF = churn_model_rf, 
+                          NB = churn_model_nb_loocv))
+
+### 3.b. Display the Results ---
+summary(results)
+
+
+## 2. Box and Whisker Plot ----
+# To visualize the spread of the estimated accuracies
+# for different algorithms and how they relate.
+
+scales <- list(x = list(relation = "free"), y = list(relation = "free"))
+bwplot(results, scales = scales)
+
+## 3. Dot Plots ----
+# To show both the mean estimated accuracy as well as the 95% confidence
+# interval (e.g. the range in which 95% of observed scores fell).
+
+scales <- list(x = list(relation = "free"), y = list(relation = "free"))
+dotplot(results, scales = scales)
+
+## 4. Scatter Plot Matrix ----
+# To consider whether the predictions from two
+# different algorithms are correlated.
+
+splom(results)
+
+## 5. Pairwise xyPlots ----
+# Pairwise comparison of the accuracy of trial-folds for
+# two models using an xyplot.
+
+# xyplot plots to compare models
+xyplot(results, models = c("LDA", "SVM"))
+
+# or
+# xyplot plots to compare models
+xyplot(results, models = c("SVM", "KNN"))
+
+## 6. Statistical Significance Tests ----
+# To calculate the significance of the differences between the
+# metric distributions of the various models.
+
+diffs <- diff(results)
+
+summary(diffs)
+```
+
+```{r Training the Model}
+
+## 1. Data Splitting
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+train_index <- createDataPartition(subset_dataset$Churn,
+                                   p = 0.75,
+                                   list = FALSE)
+
+subset_dataset_train <- subset_dataset[train_index, -1 ]
+subset_dataset_test <- subset_dataset[-train_index, -1]
+
+### 2. Model Training
+## Naive Bayes ---
+### Train a Naive Bayes classifier based on an LOOCV ----
+train_control <- trainControl(method = "LOOCV")
+
+churn_model_nb_loocv <-
+  caret::train(`Churn` ~ ., data = subset_dataset_train,
+               trControl = train_control, na.action = na.omit,
+               method = "naive_bayes", metric = "Accuracy")
+
+### Test the trained model using the testing dataset ====
+predictions_nb_loocv <-
+  predict(churn_model_nb_loocv, subset_dataset_test[, 1:11])
+
+### View the Model
+print(churn_model_nb_loocv)
+
+
+## LDA ----
+set.seed(7)
+churn_model_lda <- train(Churn ~ ., data = subset_dataset_train,
+                        method = "lda", trControl = train_control)
+
+## KNN ----
+set.seed(7)
+churn_model_knn <- train(Churn ~ ., data = subset_dataset_train,
+                        method = "knn", trControl = train_control)
+
+## SVM ----
+set.seed(7)
+churn_model_svm <- train(Churn ~ ., data = subset_dataset_train,
+                        method = "svmRadial", trControl = train_control)
+
+## Random Forest ----
+set.seed(7)
+churn_model_rf <- train(Churn ~ ., data = subset_dataset_train,
+                       method = "rf", trControl = train_control)
+
+
+## Cross Validation
+churn_model_nb_loocv <-
+  caret::train(`Churn` ~ ., data = subset_dataset_train,
+               trControl = train_control, na.action = na.omit,
+               method = "naive_bayes", metric = "Accuracy")
+
+
+
+```
+
+```{r Model Performance }
+## 3. Model Performance --- 
+## Resampling Methods
+train_control <- trainControl(method = "cv", number = 10)
+
+
+subset_dataset_model_nb <-
+  e1071::naiveBayes(`diabetes` ~ ., data = subset_dataset_train)
+
+predictions_nb_e1071 <-
+  predict(subset_dataset_model_nb, subset_dataset_test[, 1:9])
+
+print(subset_dataset_model_nb)
+caret::confusionMatrix(predictions_nb_e1071, subset_dataset_test$Churn)
+
+
+train_control <- trainControl(method = "repeatedcv", number = 5, repeats = 3)
+
+subset_dataset_model_svm <-
+  caret::train(`Churn` ~ ., data = subset_dataset_train,
+               trControl = train_control, na.action = na.omit,
+               method = "svmLinearWeights2", metric = "Accuracy")
+
+predictions_svm <- predict(subset_dataset_model_svm, subset_dataset_test[, 1:12])
+
+print(subset_dataset_model_svm)
+caret::confusionMatrix(predictions_svm, subset_dataset_test$Churn)
+
+
+
+train_control <- trainControl(method = "LOOCV")
+
+churn_model_nb_loocv <-
+  caret::train(`Churn` ~ ., data = subset_dataset_train,
+               trControl = train_control, na.action = na.omit,
+               method = "naive_bayes", metric = "Accuracy")
+
+predictions_nb_loocv <-
+  predict(churn_model_nb_loocv, subset_dataset_test[, 1:11])
+
+print(churn_model_nb_loocv)
+caret::confusionMatrix(predictions_nb_loocv, subset_dataset_test$Churn)
+```
+
+```{r Hyperparameter Tuning}
+ndependent_variables <- subset_dataset[, -12]
+
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3,
+                              search = "random")
+set.seed(3)
+mtry <- sqrt(ncol(independent_variables))
+
+churn_model_rf <- train(Churn ~ ., data = subset_dataset_train, method = "rf",
+                                    
+                                      # enables us to randomly search 12 options
+                                      # for the value of mtry
+                                      tuneLength = 12,
+                                      trControl = train_control)
+
+print(churn_model_rf)
+
+
+```
+
+```{r Stacking Ensembles}
+# Stacking Ensembles
+# 3. Stacking ----
+# The "caretEnsemble" package allows you to combine the predictions of multiple
+# caret models.
+
+## caretEnsemble::caretStack() ----
+# Given a list of caret models, the "caretStack()" function (in the
+# "caretEnsemble" package) can be used to specify a higher-order model to
+# learn how to best combine together the predictions of sub-models.
+
+## caretEnsemble::caretList() ----
+# The "caretList()" function provided by the "caretEnsemble" package can be
+# used to create a list of standard caret models.
+
+# Example of Stacking algorithms
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3,
+                              savePredictions = TRUE, classProbs = TRUE)
+set.seed(3)
+
+algorithm_list <- c("lda", "knn", "rf", "svmRadial")
+models <- caretList(Churn ~ ., data = dataset, trControl = train_control,
+                    methodList = algorithm_list)
+
+# Summarize results before stacking
+results <- resamples(models)
+summary(results)
+dotplot(results)
+
+```
+
+```{r Consolidation}
+# Plumber API ---
+
+# 2. Process a Plumber API ----
+# This allows us to process a plumber API
+api <- plumber::plumb("")
+
+# 3. Run the API on a specific port ----
+# Specify a constant localhost port to use
+api$run(host = "127.0.0.1", port = 5022)
+
+
+# 4. Generate the URL required to access the API ----
+
+# Constant port is set to 5022 running on localhost
+base_url <- "http://127.0.0.1:5022/churn"
+
+# "params" contains an element for each parameter to be specified.
+params <- list(arg_tenure = 6, arg_contractlength = 148, arg_supportcalls = 72,
+               arg_paymentdelay = 35, arg_totalspend = 0, arg_lastinteraction = 33.6,
+               arg_subscriptiontype = 0.627, arg_usagefrequency = 50)
+
+query_url <- httr::modify_url(url = base_url, query = params)
+
+# URL
+print(query_url)
+
+# The results of the model prediction through the API.
+model_prediction <- GET(query_url)
+
+# Print the specific result 
+content(model_prediction)[[1]]
+
+
+# To Parse the response into the right format ----
+# We need to extract the results from the default JSON list format into
+# a non-list text format:
+model_prediction_raw <- content(model_prediction, as = "text",
+                                encoding = "utf-8")
+jsonlite::fromJSON(model_prediction_raw)
+
+# Function
+get_diabetes_predictions <-
+  function(arg_tenure, arg_contractlength, arg_supportcalls,
+                arg_paymentdelay, arg_totalspend, arg_lastinteraction,
+                arg_subscriptiontype, arg_usagefrequency) {
+    base_url <- "http://127.0.0.1:5022/churn"
+    
+    params <- list(arg_tenure, arg_contractlength, arg_supportcalls,
+                   arg_paymentdelay, arg_totalspend, arg_lastinteraction,
+                   arg_subscriptiontype, arg_usagefrequency)
+    
+    query_url <- modify_url(url = base_url, query = params)
+    
+    model_prediction <- GET(query_url)
+    
+    model_prediction_raw <- content(model_prediction, as = "text",
+                                    encoding = "utf-8")
+    
+    jsonlite::fromJSON(model_prediction_raw)
+  }
+
+# The model's prediction should be "positive for diabetes" based on the
+# following parameters:
+# Include parameters for all variables
+churn_rate_predictions()
+```
+
+```{r Plumber Output}
+#<?php
+# STEP 1: Set the API endpoint URL
+## $apiUrl = 'http://127.0.0.1:5022/churn';
+
+# Initiate a new cURL session/resource
+## $curl = curl_init();
+
+# STEP 2: Set the values of the parameters to pass to the model ----
+#$arg_tenure= 23;
+#$arg_contractlength = 100;
+#$arg_supportcalls = 10;
+#$arg_paymentdelay = 12; 
+#$arg_totalspend = 12000;
+#$arg_lastinteraction = 10;
+#$arg_subscriptiontype = 2;
+#$arg_usagefrequency = 12
+#$arg_age = 35;
+
+
+
+#$params = array('arg_tenure' => $arg_tenure, 'arg_paymentdelay' => $arg_paymentdelay,
+#                'arg_usagefrequency' => $arg_usagefrequency, 'arg_supportcalls' => $arg_supportcalls,
+#                'arg_subscriptiontype' => $arg_subscriptiontype, 'arg_paymentdelay' => $arg_paymentdelay,
+#                'arg_lastinteraction' => $arg_lastinteraction, 'arg_age' => $arg_age);
+# STEP 3: Set the cURL options
+# CURLOPT_RETURNTRANSFER: true to return the transfer as a string of the return value of curl_exec() instead of outputting it directly.
+
+## curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+## $apiUrl = $apiUrl . '?' . http_build_query($params);
+## curl_setopt($curl, CURLOPT_URL, $apiUrl);
+
+# For testing:
+  ## echo "The generated URL sent to the API is:<br>".$apiUrl."<br><br>";
+
+# Make a GET request
+## $response = curl_exec($curl);
+
+# Check for cURL errors
+##if (curl_errno($curl)) {
+  ## $error = curl_error($curl);
+  # Handle the error appropriately
+  ## die("cURL Error: $error");
+#}
+
+# Close cURL session/resource
+## curl_close($curl);
+
+# Process the response
+# echo "<br>The predicted output in JSON format is:<br>" . var_dump($response) . "<br><br>";
+
+# Decode the JSON into normal text
+## $data = json_decode($response, true);
+
+# echo "<br>The predicted output in decoded JSON format is:<br>" . var_dump($data) . "<br><br>";
+
+
+# Check if the response was successful
+## if (isset($data['0'])) {
+  # API request was successful
+  # Access the data returned by the API
+##  echo "The predicted diabetes status is:<br>";
+  
+  # Process the data
+##  foreach($data as $repository) {
+##    echo $repository['0'],$repository['1'],$repository['2'],"<br>";
+# }
+##} else {
+  # API request failed or returned an error
+  # Handle the error appropriately
+##  echo "API Error: " . $data['message'];
+#}
+
+ # ?>
+
+```
+
